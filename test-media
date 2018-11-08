@@ -1,0 +1,94 @@
+#!/bin/bash
+#
+# This is an example to show the huebridge-shell code in action.  We
+# pretend to be a simple media center
+#
+# I make no claims that this is good code!  It's just a proof of concept,
+# so there's a lot of hard-coded duplication (eg names of the lights).
+# (associative arrays might make more sense)
+# But I think this makes for more readable code.
+
+# Startup state
+power=off
+dvd=off
+bluray=on
+mac=off
+radio=off
+wii=off
+volume=50
+
+# What if a light is turned on
+do_on()
+{
+  case $1 in
+     POWER) power=on ;;
+       DVD) dvd=on  ; bluray=off ; mac=off ; radio=off ; wii=off ;;
+    BLURAY) dvd=off ; bluray=on  ; mac=off ; radio=off ; wii=off ;;
+       MAC) dvd=off ; bluray=off ; mac=on  ; radio=off ; wii=off ;;
+     RADIO) dvd=off ; bluray=off ; mac=off ; radio=on  ; wii=off ;;
+       WII) dvd=off ; bluray=off ; mac=off ; radio=off ; wii=on  ;;
+  esac
+}
+
+# It only makes sense to turn power off.  We remember the
+# previous state (what input was selected, volume) just by not
+# touching them.
+do_off()
+{
+  if [ $1 == "POWER" ]
+  then
+    power=off
+  fi
+}
+
+while [ 1 ]
+do
+  # Each time round the loop, send updates back to the bridge.
+  # We'll just update every light, because turning one light on
+  # may impact others
+  
+  echo 'LIST#Power#DVD#BluRay#Mac Mini#Radio#WII'
+
+  echo "LIGHT#Power#$power#$volume"
+  echo "LIGHT#DVD#$dvd#0"
+  echo "LIGHT#BluRay#$bluray#0"
+  echo "LIGHT#Mac Mini#$mac#0"
+  echo "LIGHT#Radio#$radio#abc"
+  echo "LIGHT#WII#$wii#99"
+
+  # Wait for a command.  If we don't get one in five seconds then go back
+  # round the loop, which will send a new update anyway
+  # This is a simple way of sending periodic updates to the gateway without
+  # needing coprocesses.  It means that updates after a command
+  # is done immediately but an outside event (there are none here, but
+  # there could be in a real example) will be delayed no longer than 5
+  # seconds.
+  read -t 5 input
+
+  # This is a cheap and nasty way of splitting the command up; it works
+  # because none of the lights can have a space in their name.
+  OIFS="$IFS"
+  IFS="#"
+  set -- $input
+  declare -u command=$1
+  declare -u name=$2
+  declare -u state=$3
+  bright=$4
+  IFS="$OIFS"
+
+  # We only care about the LIGHT command
+  if [ "$command" == "LIGHT" ]
+  then
+    # Ignore states that are not on/off
+    case $state in
+      OFF) do_off $name ;;
+       ON) do_on $name ;;
+    esac
+
+    # Brightness only impacts power, where we set the volume
+    if [[ $name == "POWER" && $bright =~ ^[0-9]+$ ]]
+    then
+      volume=$bright
+    fi
+  fi
+done
