@@ -94,7 +94,7 @@ func hue_setLightState(w http.ResponseWriter, r *http.Request, p httprouter.Para
 	// structures, so I'm just gonna fake up the JSON and send
 	// it directly
 	res := `[ {"success":{"/lights/` + lightID + `/state/bri":` + strconv.Itoa(this_light.Bri) + `}}, {"success":{"/lights/` + lightID + `/state/on":` + strconv.FormatBool(this_light.On) + `}} ]`
-	log.Println(res)
+	// log.Println(res)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(res))
