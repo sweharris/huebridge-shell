@@ -57,7 +57,6 @@ func hue_setLightState(w http.ResponseWriter, r *http.Request, p httprouter.Para
 	// log.Printf("[DEVICE] req = %#v", req)
 
 	lightID := p.ByName("lightId")
-	log.Println("[API] Update for", lightID, "from", r.RemoteAddr)
 	thislight, ok := Lights[lightID]
 	if !ok {
 		log.Printf("device %v missing", lightID)
@@ -76,6 +75,7 @@ func hue_setLightState(w http.ResponseWriter, r *http.Request, p httprouter.Para
 	if req.Bri != nil {
 		bristr = strconv.Itoa(*req.Bri)
 	}
+	log.Println("[API] Update for", lightID, "from", r.RemoteAddr, "setting", onoff, bristr)
 	send_cmd_to_child("LIGHT#" + thislight.name + "#" + onoff + "#" + bristr)
 
 	// Let's assume the send to child always worked.  If it
