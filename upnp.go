@@ -82,7 +82,7 @@ func upnpResponder(port int) {
 		}
 		req, err := http.ReadRequest(bufio.NewReader(bytes.NewReader(b[:n])))
 		if err != nil {
-			log.Println("[UPNP] ReadRequest failed:", err)
+			log.Println("[UPNP] ReadRequest failed from", raddr, ":", err)
 			continue
 		}
 
