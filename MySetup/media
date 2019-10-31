@@ -1,0 +1,191 @@
+#!/bin/ksh
+
+# We're just going to create a power switch, a music switch, and a
+# christmas switch
+
+case $0 in
+  */*) BASE_DIR=${0%/*} ;;
+    *) BASE_DIR=. ;;
+esac
+
+TV_STATUS=/tmp/tvpower
+
+# Spin off the collector processes
+$BASE_DIR/check_tv $TV_STATUS &
+
+# We'll use the existing media API to do some magic
+MEDIA=/Users/sweh/bin/Alexa/Media_API
+
+typeset -A SWITCH VOLUME
+
+SWITCH["MediaPower"]=OFF
+SWITCH["Music"]=OFF
+SWITCH["ChristmasMusic"]=OFF
+SWITCH["RandomMusic"]=OFF
+SWITCH["TV"]=OFF
+SWITCH["TiVo"]=OFF
+SWITCH["BluRay"]=OFF
+SWITCH["Mac"]=OFF
+
+for s in ${!SWITCH[@]}
+do
+  integer VOLUME[$s]=0
+done
+
+INPUT=""
+
+# Denon volume ranges from
+# MUTE: ON/OFF
+# Volume: foo -<x>DB
+
+# ---.- ==> silent
+# -80 ==> 0
+# +18 ==> 100
+#
+# So let's treat it as a 1 to 99 scale.
+# We need to then convert to a 0->255 scale.  Hmm
+
+function get_volume_power
+{
+  typeset mute vol
+  typeset field
+  typeset -u value
+  denon | while read field value
+  do
+    case $field in
+        Input:) INPUT=$value ;;
+        Power:) SWITCH["MediaPower"]=$value ;;
+         Mute:) mute=$value ;;
+       Volume:) vol=${value#* }; vol=${vol%DB}
+    esac
+  done
+  if [ "$mute" == "ON" ]
+  then
+    vol=-80
+  elif [ "$vol" == "---.-" ]
+  then
+    vol=-80
+  fi
+  let vol=vol+80
+  let vol=vol*2.55
+  VOLUME["MediaPower"]=$vol
+}
+
+get_tv_power()
+{
+  SWITCH["TV"]=$(cat $TV_STATUS)
+}
+
+function switch_to_mac
+{
+  tv on
+  get_volume_power
+
+  if [ "${SWITCH["MediaPower"]}" != "ON" -o $INPUT != "MAC" ]
+  then
+    denon input mac
+    if [ "${SWITCH["MediaPower"]}" != "ON" ]
+    then
+      sleep 15
+    fi
+  fi
+  denon volume -36
+}
+
+# What if a light is turned on
+function do_on
+{
+  case $1 in
+         MEDIAPOWER) denon power on ;;
+     CHRISTMASMUSIC) switch_to_mac ; itunes list "Christmas" ;;
+        RANDOMMUSIC) switch_to_mac ; itunes dj ;;
+                 TV) tv on ;;
+             BLURAY) denon input bluray ; wol bluray ; tv on ;;
+               TIVO) denon input tivo ; tv on ;;
+                MAC) denon input mac ; tv on ;;
+                  *) switch_to_mac
+                     itunes play
+                     ;;
+  esac
+}
+
+function do_off
+{
+  case $1 in
+     MEDIAPOWER) $MEDIA sleep ;;
+             TV) tv off ;;
+              *) itunes pause ;;
+  esac
+}
+
+function set_volume
+{
+  typeset vol=$1
+  integer dvol
+  let dvol=vol/2.55-80  # Close enough
+  denon volume $dvol
+}
+
+lights=$(echo ${!SWITCH[@]} | tr ' ' '#')
+
+while [ 1 ]
+do
+  # Each time round the loop, send updates back to the bridge.
+  
+  echo "LIST#$lights"
+
+  # Read the sub processes
+  get_volume_power
+  get_tv_power
+
+  music=ON
+  if [ -z "$(itunes status | head -1 | grep playing)" ]
+  then
+    music=OFF
+  fi
+  SWITCH["Music"]=$music
+
+  case $INPUT in
+       MAC) SWITCH["Mac"]=ON  ; SWITCH["BluRay"]=OFF ; SWITCH["TiVo"]=OFF ;;
+    BLURAY) SWITCH["Mac"]=OFF ; SWITCH["BluRay"]=ON  ; SWITCH["TiVo"]=OFF ;;
+      TIVO) SWITCH["Mac"]=OFF ; SWITCH["BluRay"]=OFF ; SWITCH["TiVo"]=ON  ;;
+  esac
+
+  for s in ${!SWITCH[@]}
+  do
+    if [[ $s != -* ]]
+    then
+      echo "LIGHT#$s#${SWITCH[$s]}#${VOLUME[$s]}"
+    fi
+  done
+
+  input=""
+  read -t 5 input
+
+  # This is a cheap and nasty way of splitting the command up; it works
+  # because none of the lights can have a space in their name.
+
+  OIFS="$IFS"
+  IFS="#"
+  set -- $input
+  typeset -u command=$1
+  typeset -u name=$2
+  typeset -u state=$3
+  bright=$4
+  IFS="$OIFS"
+  
+  # We only care about the LIGHT command
+  if [ "$command" == "LIGHT" ]
+  then
+    # Ignore states that are not on/off
+    case $state in
+      OFF) do_off $name ;;
+       ON) do_on $name ;;
+    esac > /dev/null 2>&1
+
+    if [ $name == MEDIAPOWER ]
+    then
+      set_volume $bright > /dev/null 2>&1
+    fi
+  fi
+done

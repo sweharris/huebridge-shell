@@ -1,0 +1,9 @@
+#!/bin/ksh -p
+
+STATUS=${1:-/tmp/tvpower}
+
+/Users/sweh/bin/mqttcli sub --host hass -t tv | while read line
+do
+  kill -0 $PPID 2>/dev/null || exit
+  echo $line > $STATUS
+done
