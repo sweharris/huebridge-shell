@@ -22,6 +22,8 @@ We create a number of fake lights:
 
            "Music" - turning this light on will turn the system on, and
                      switch input to Mac and play the current iTunes queue.
+                     If iTunes is playing then this light is "on", else it
+                     is "off".
 
   "ChristmasMusic" - turning this light on will turn the system on,
                      and start playing Christmas music.
